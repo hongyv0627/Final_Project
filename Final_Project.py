@@ -9,7 +9,8 @@ import json
 import secrets # file that contains your API key
 import time
 import sqlite3 
-
+import plotly
+import plotly.graph_objects as go
 
 def open_cache(CACHE_FILENAME):
     ''' opens the cache file if it exists and loads the JSON into
@@ -49,6 +50,27 @@ def save_cache(cache_dict):
 
 
 def make_url_request_using_cache(url, cache, headers=None, yelp=False):
+    '''Check the cache for a saved result for the url. If the result is 
+    found, return it. Otherwise send a new request, save it, then return it.
+    Parameters
+    ----------
+    url: string
+        The URL for the API endpoint
+
+    cache: dict
+        The dictionary to save
+
+    headers (optional): strings
+        the headers string which is necessary when we request Yelp API
+
+    yelp: bool
+        boolean value deciding if we request Yelp API or not
+    
+    Returns
+    -------
+    string
+        the results of the query as a Python object loaded from JSON
+    '''
     if (url in cache.keys()): # the url is our unique key
         print("Using cache")
         return cache[url]
@@ -71,25 +93,30 @@ CACHE_DICT = open_cache(CACHE_FILENAME)
 
 class Restaurant:
     """
-    a national site
+    a restaurant instance
 
     Instance Attributes
     -------------------
-    category: string
-        the category of a national site (e.g. 'National Park', '')
-        some sites have blank category.
-
     name: string
-        the name of a national site (e.g. 'Isle Royale')
+        the name of a fast food restaurant (e.g. 'McDonald's')
 
-    address: string
-        the city and state of a national site (e.g. 'Houghton, MI')
+    street: string
+         the street of a fast food restaurant (e.g. '201 W Washington Blvd')
+
+    city: string
+        the city of a fast food restaurant (e.g. 'Los Angeles')
+
+    state: string
+        the state of a fast food restaurant (e.g. 'CA')
 
     zipcode: string
-        the zip-code of a national site (e.g. '49931', '82190-0168')
+        the zip-code of a fast food restaurant (e.g. '90007')
 
-    phone: string
-        the phone of a national site (e.g. '(616) 319-7906', '307-344-7381')
+    rating: string
+        the rating of a fast food restaurant (e.g. '3.7')
+
+    review_count: string
+        the rating number of a fast food restaurant (e.g. '200')
     """
 
     def __init__(self, name, street, city, state, zipcode, rating, review_count):
@@ -126,6 +153,7 @@ def build_fast_food_brand_list():
     Returns
     -------
     list
+        a list that contains the 50 biggest fast food brands
     """
 
     fast_food_brand_list = []
@@ -136,13 +164,30 @@ def build_fast_food_brand_list():
 
     brand_list = soup.find_all('p',class_='chainame')
     for brand in brand_list:
-        fast_food_brand_list.append(brand.text.strip().lower())
+        fast_food_brand_list.append(brand.text.strip().lower().replace("’","'"))
     
     return fast_food_brand_list
 
 
+
 def get_restaurant_list_from_google(brand_name, location):
+    '''Make a list of restaurant instances from Google Places API,
+       with brand name and location as input value that users want
+       to search for.
     
+    Parameters
+    ----------
+    brand_name: string
+        The name of the fast food restaurant that users want to search for.
+    
+    location: string
+        The location of the fast food restaurant that users want to search for.
+    
+    Returns
+    -------
+    list
+        a list of fast food restaurant instances with Google rating information
+    '''
     key = secrets.GOOGLE_API_KEY
     converted_brand_name = brand_name.replace(" ","+")
     converted_location = location.replace(" ","+")
@@ -154,8 +199,7 @@ def get_restaurant_list_from_google(brand_name, location):
     google_instance_list = []
     while len(google_instance_list) <100: #maximum number of restaurants that we grab is 100
         if google_api_url_json['status'] =='ZERO_RESULTS':
-            print(f"we cannot find any {brand_name} restaurants in {location}.") 
-            break
+            return list()
         elif google_api_url_json['status'] =='OK':
             for restaurant in google_api_url_json['results']:
                 name = restaurant.get('name',None)
@@ -187,9 +231,21 @@ def get_restaurant_list_from_google(brand_name, location):
 
 
 def get_corresponding_yelp_information(google_instance_list):
-
+    '''Make a list of fast food restaurant instances from Yelp Fusion API,
+       with the list of google instance that users have already got from 
+       Google Places API as input value. Each instance will be passed into 
+       the Yelp Fusion API to get their corresponding Yelp rating information.
     
-
+    Parameters
+    ----------
+    google_instance_list: list
+        The list of google instances
+    
+    Returns
+    -------
+    list
+        a list of fast food restaurant instances with Yelp rating information
+    '''
     yelp_instance_list = []
     yelp_key = secrets.YELP_API_KEY
     yelp_headers = {'User-Agent': 'UMSI 507 Course Final Project',
@@ -225,6 +281,22 @@ def get_corresponding_yelp_information(google_instance_list):
 
 
 def create_new_table(data_source,table_name,database_name):
+    '''create a new SQLite table 
+    Parameters
+    ----------
+    data_source: string
+        The name of data source
+
+    table_name: string
+        The name of table
+
+    database_name: string
+        The name of database
+    
+    Returns
+    -------
+    None
+    '''
     connection = sqlite3.connect(f"{database_name}.sqlite")
     cursor = connection.cursor()
     drop_table = f"""DROP TABLE IF EXISTS {table_name}"""
@@ -246,7 +318,26 @@ def create_new_table(data_source,table_name,database_name):
     connection.close()
 
 
+
 def insert_new_value(object_list,table_name,database_name):
+    '''Insert new value to the SQLite table
+    
+    Parameters
+    ----------
+    object: list
+        The list of fast food restaurant instances, with each instances
+        a new value that we want to insert to the table
+    
+    table_name: string
+        The name of table that we want to insert new value to
+
+    database_name: string
+        The name of database that we want to insert new value to
+    
+    Returns
+    -------
+    None
+    '''
     connection = sqlite3.connect(f"{database_name}.sqlite")
     cursor = connection.cursor()
     insert_value = f"""INSERT INTO {table_name}
@@ -258,26 +349,315 @@ def insert_new_value(object_list,table_name,database_name):
     connection.commit()
     connection.close()
     
+
+
+def match_restaurant(google_table,yelp_table,database_name):
+    '''From two table, match their information with foreign keys
     
+    Parameters
+    ----------
+    google_table: string
+        The name of first SQLite table, containing google ratings' information
     
+    yelp_table: string
+        The name of second SQLite table, containing yelp ratings' information
+
+    database_name: string
+        The name of database containg the above two tables
     
+    Returns
+    -------
+    list
+        a list of tuples that represent the query result, with each tuple containing
+        an restaurant intance's detailed information including google's rating and 
+        yelp's rating
+    '''
+    connection = sqlite3.connect(f"{database_name}.sqlite")
+    cursor = connection.cursor()
+    query = f"""
+    SELECT {google_table}.Name, {google_table}.Street, {google_table}.City, {google_table}.Zipcode, Google_rating, Google_review_count, Yelp_rating, Yelp_review_count
+    FROM {google_table}
+    JOIN {yelp_table}
+    ON ({google_table}.Name == {yelp_table}.Name
+    AND {google_table}.Street == {yelp_table}.Street
+    AND {google_table}.Zipcode == {yelp_table}.Zipcode)
+    """
+    result = cursor.execute(query).fetchall()
+    connection.close()
+    return result
     
+
+
+def create_dict_of_ratings_list(matched_restaurant_list):
+    '''From the list of tuples that represent the query result, build a dictionary 
+    of lists that contains all data we need to generate the plots.
     
+    Parameters
+    ----------
+    matched_restaurant: list
+        The list of tuples that represent the query result, with each tuple containing
+        an restaurant intance's detailed information including google's rating and 
+        yelp's rating
+    
+    Returns
+    -------
+    dict
+        a dictionary of lists that contains all data we need to generate the plots, including
+        Google ratings and its rating numbers, Yelp ratings and its rating numbers, Weighted ratings 
+        and total rating numbers.
+    
+    '''
+    dict_of_ratings = {}
+    list_of_google_ratings = []
+    list_of_google_review_count = []
+    list_of_yelp_ratings = []
+    list_of_yelp_review_count = []
+    list_of_weighted_ratings = []
+    list_of_total_review_count = []
+
+    for resuaurant in matched_restaurant_list:
+        list_of_google_ratings.append(float(resuaurant[4]))
+        list_of_google_review_count.append(int(resuaurant[5]))
+        list_of_yelp_ratings.append(float(resuaurant[6]))
+        list_of_yelp_review_count.append(int(resuaurant[7]))
+        
+        total_review_count = (int(resuaurant[5]) + int(resuaurant[7]))
+        list_of_total_review_count.append(int(total_review_count))
+
+        weighted_rating = (float(resuaurant[4])*int(resuaurant[5]) + float(resuaurant[6]) * int(resuaurant[7])) / total_review_count
+        list_of_weighted_ratings.append(float(format(weighted_rating,'.2f')))
+
+    dict_of_ratings["Google_ratings"] = list_of_google_ratings
+    dict_of_ratings["Google_review_counts"] = list_of_google_review_count
+    dict_of_ratings["Yelp_ratings"] = list_of_yelp_ratings
+    dict_of_ratings["Yelp_review_counts"] = list_of_yelp_review_count
+    dict_of_ratings["Weighted_ratings"] = list_of_weighted_ratings
+    dict_of_ratings["Total_review_counts"] = list_of_total_review_count
+
+    return dict_of_ratings
+
+
+
+def make_histogram(xvals,title):
+    '''Generate probability distribution of a dataset in terms of histogram.
+    
+    Parameters
+    ----------
+    xvals: list
+        a list that contains dataset
+
+    title: string
+        The title of histogram
+    
+    Returns
+    -------
+    None
+    '''
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(
+        x=xvals, 
+        histnorm='probability',
+        #name = f''
+        xbins=dict(start=-0, end=5, size=0.1), # bins used for histogram
+        marker_color='#EB89B5',
+        opacity=0.75
+    ))
+
+    fig.update_layout(
+            title_text = title,  # title of plot
+            xaxis_title_text = 'Rating',  # xaxis label
+            yaxis_title_text = 'Probability',  # yaxis label
+            bargap=0.2,  # gap between bars of adjacent location coordinates
+           #bargroupgap=0.1  # gap between bars of the same location coordinates
+        )
+    fig.show()
+    #fig.write_html("histogram.html", auto_open=True)
+
+        
+
+def make_scattor_plots(xvals,yvals,x_axis,y_axis,title):
+    '''Generate scatter plot of a dataset versus another dataset.
+    
+    Parameters
+    ----------
+    xvals: list
+        a list that contains dataset
+
+    xvals: list
+        a list that contains dataset
+
+    x_axis: string
+        The name of x axis
+    
+    x_axis: string
+        The name of y axis
+    
+    title: string
+        The title of scatter plot
+    
+    Returns
+    -------
+    None
+    '''
+    fig = go.Figure()
+    # Add traces
+    fig.add_trace(go.Scatter(
+        x=xvals, y=yvals,
+        mode='markers',
+    ))
+      
+    fig.update_layout(
+        title_text=title,  # title of plot
+        xaxis_title_text=x_axis,  # xaxis label
+        yaxis_title_text=y_axis)  # yaxis label
+    fig.show()
+    #fig.write_html("histogram.html", auto_open=True)
+    
+
 
 if __name__ == "__main__":
-
     
+    while True:
+        input_brand = input('Please enter a fast food restaurant name for the research or type "exit" to leave: ')
+        print(" ")
+        if input_brand.lower() == "exit":
+            print('Bye!')
+            break 
+
+        fast_food_brand_list = build_fast_food_brand_list()
+        if input_brand.lower() not in fast_food_brand_list:
+            print("The restaurant you enter is not a fast food restaurant, please try again.")
+            continue
+
+        input_location = input("Please enter a location you want to search (for example, Los Angeles): ")
+        google_result = get_restaurant_list_from_google(input_brand,input_location)
+        if google_result is False:
+            print(f"we cannot find any {input_brand} restaurants in {input_location}. Try another location.") 
+            continue
+
+        yelp_result = get_corresponding_yelp_information(google_result)
+
+        create_new_table("Google","Google_table", "restaurant_database")
+        insert_new_value(google_result,"Google_table","restaurant_database")
+
+        create_new_table("Yelp", "Yelp_table", "restaurant_database")
+        insert_new_value(yelp_result, "Yelp_table", "restaurant_database")
+
+        matched_restaurant_list = match_restaurant("Google_table","Yelp_table","restaurant_database")
+
+        dict_of_ratings = create_dict_of_ratings_list(matched_restaurant_list)
+        
+        print("-----------------------------")
+        print(f"We found {len(google_result)} relevant results on Google and "
+              f"{len(yelp_result)} relevant results on Yelp.")
+        print(" ")
+        print(f"After the matching, we found {len(matched_restaurant_list)} qualified restaurants.")
+        print("We will use the data of these qualified restaurants for you to examine and plot.")
+        print(" ")
+
+        while True:
+            plot_choice_text = \
+            '''We have the following plots available for you to check, enter the number to see the corresponding plot:
+            1. Distribution of Google Rating
+            2. Distribution of Yelp Rating
+            3. Distribution of Weighted Rating
+            4. Scatter plot of Google Rating versus its Rating Numbers
+            5. Scatter plot of Yelp Rating versus its Rating Numbers
+            6. Scatter plot of Google and Yelp's Weighted Rating versus its total Rating Numbers
+            7. Scatter plot of Google Rating versus its Yelp Rating
+            8. Scatter plot of Google Rating number versus its Yelp Rating Numbers'''
+            print(plot_choice_text)
+            print(" ")
+            input_plot = input("What plot do you want to examine? Enter the number 1-8.")
+            if input_plot not in ["1","2","3","4","5","6","7","8"]:
+                print("Please enter a valid number between 1-8.")
+                continue
+            elif input_plot == "1":
+                xvals = dict_of_ratings["Google_ratings"]
+                title = "Distribution of Google Rating"
+                make_histogram(xvals,title)
+
+            elif input_plot == "2":
+                xvals = dict_of_ratings["Yelp_ratings"]
+                title = "Distribution of Yelp Rating"
+                make_histogram(xvals,title)
+
+            elif input_plot == "3":
+                xvals = dict_of_ratings["Weighted_ratings"]
+                title = "Distribution of Weighted Rating"
+                make_histogram(xvals,title)
+
+            elif input_plot == "4":
+                yvals = dict_of_ratings["Google_ratings"]
+                xvals = dict_of_ratings['Google_review_counts']
+                y_axis = "Google_ratings"
+                x_axis = 'Google_review_counts'
+                title = 'Scatter plot of Google Rating versus its Rating Numbers'
+                make_scattor_plots(xvals,yvals,x_axis,y_axis,title)
+
+            elif input_plot == "5":
+                yvals = dict_of_ratings["Yelp_ratings"]
+                xvals = dict_of_ratings["Yelp_review_counts"]
+                y_axis = "Yelp_ratings"
+                x_axis = 'Yelp_review_counts'
+                title = 'Scatter plot of Yelp Rating versus its Rating Numbers'
+                make_scattor_plots(xvals,yvals,x_axis,y_axis,title)
+
+            elif input_plot == "6":
+                yvals = dict_of_ratings["Weighted_ratings"]
+                xvals = dict_of_ratings["Total_review_counts"]
+                y_axis = "Weighted_ratings"
+                x_axis = 'Total_review_counts'
+                title = "Scatter plot of Google and Yelp's Weighted Rating versus its Rating Numbers"
+                make_scattor_plots(xvals,yvals,x_axis,y_axis,title)
+            
+            elif input_plot == "7":
+                yvals = dict_of_ratings["Google_ratings"]
+                xvals = dict_of_ratings["Yelp_ratings"]
+                y_axis = "Google_ratings"
+                x_axis = 'Yelp_ratings'
+                title = 'Scatter plot of Google Rating versus its Yelp Rating'
+                make_scattor_plots(xvals,yvals,x_axis,y_axis,title)
+            
+            elif input_plot == "8":
+                yvals = dict_of_ratings["Google_review_counts"]
+                xvals = dict_of_ratings["Yelp_review_counts"]
+                y_axis = 'Google_review_counts'
+                x_axis = 'Yelp_review_counts'
+                title = 'Scatter plot of Google Rating number versus its Yelp Rating Numbers'
+                make_scattor_plots(xvals,yvals,x_axis,y_axis,title)
+
+
+
+            print(" ")
+            input_another_plot = input("Do you want to plot another chart? (Yes/No): ")
+            if input_another_plot.lower() == "no":
+                print(" ")
+                break
+            else:
+                print(" ")
+                continue
+
+            
+
+
+
+
+
+    '''
     x = get_restaurant_list_from_google("McDonald's", "Los Angeles")
     y = get_corresponding_yelp_information(x)
     create_new_table("Google", "Google_list", "Final_Project_database")
     insert_new_value(x, "Google_list", "Final_Project_database")
     create_new_table("Yelp", "Yelp_list", "Final_Project_database")
     insert_new_value(y, "Yelp_list", "Final_Project_database")
+    z = match_restaurant("Google_list","Yelp_list","Final_Project_database")
+    a = create_dict_of_ratings_list(z)
+    print(a)
     
-    '''
     for i in y:
         print(i.info())
     print("----------------")
     for j in x:
         print(j.info())
-        '''
+    '''
