@@ -8,6 +8,6 @@ along with my final project submission pdf file when I submit the Final Project 
 
 A brief description of how to interact with my program.
 The program is designated to check the google ratings and yelp ratings of a specific fast food brand's restaurants in a specific city.
-Users can enter their interested fast food brand name and enter their intersted city name. The program will return most of (but not all) the restaurants' google rating 
+Users can enter their interested fast food brand name and enter their interested city name. The program will return most of (but not all) the restaurants' google rating 
 and yelp rating of the brand in that city. The ratings data will be displayed in different kinds of plots, including histograms and scatter plots,
 and users can choose which plot do they want to look at.
